@@ -131,7 +131,8 @@ void moveNext() {
 bool elongate() {
   if ( getPosX() == FOOD[0] && getPosY() == FOOD[1] ) {
     HEAD++;
-    
+    // updateBody();
+    setHead();
 
     return true;
   }
