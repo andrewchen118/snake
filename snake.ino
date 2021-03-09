@@ -30,12 +30,13 @@
 
 Adafruit_ILI9341 tft(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
 
-int GAME_SPEED = NORMAL;
-char TRAJECTORY = RIGHT;
-int PREVIOUS[2] = {0,0};
-int FOOD[2] = {-1,-1};
+unsigned long time;
+bool GAME_START;
+int GAME_SPEED;
+char TRAJECTORY;
+int FOOD[2];
 int SNAKE[100][2];
-int HEAD = 0;
+int HEAD = 1;
 int TAIL = 0;
 
 int getJx();
@@ -44,96 +45,132 @@ int getSW();
 
 int getPosX();
 int getPosY();
+
 void moveNext();
 void cookFood();
 bool elongate();
-
 void setHead();
 void updateBody();
 void clearTail();
-
 void setTrajectory(char dir);
-void setGameSpeed(int game_speed);
+bool didCollide();
 
-unsigned long time = millis();
+void startGame();
+void gameOver();
+void setGameSpeed(int game_speed);
 
 void setup(){
   Serial.begin(9600);
   
   pinMode(Jx, INPUT);
   pinMode(Jy, INPUT);
-  pinMode(SW, INPUT_PULLUP); 
-  
-  tft.begin();                     
-  tft.setRotation(3);           
+  pinMode(SW, INPUT_PULLUP);
 
+  randomSeed(millis());
+  tft.begin();
+  tft.setRotation(3);
   tft.fillScreen(ILI9341_BLACK);
-  tft.setTextWrap(false);
-  tft.setTextSize(2); 
 
-  tft.setTextColor(ILI9341_RED);            
-  tft.setCursor(85,5);              
-  tft.print("Porofound pog l o l"); 
-  
-  tft.setTextColor(ILI9341_GREEN);  
-  tft.setCursor(20,220);           
-  tft.print("Porofound pog...");
-
-  elongate();
-
-  setGameSpeed(NORMAL);
+  gameStart();
 }
  
 void loop()
 {
   setTrajectory();
-  if ( getSW() == 0 ) {
-    cookFood();
-  }
-  if ( millis() - time >= GAME_SPEED ) {
-    
-    if (elongate()) {
-      cookFood();
-    } else {
-      clearTail();
-    }
+  if ( millis() - time >= GAME_SPEED && GAME_START ) {
     moveNext();
-    
     time = millis();
   }
+}
 
-  Serial.print("X: ");
-  Serial.print(getJx());
-  Serial.print(" | Y: ");
-  Serial.print(getJy());
-  Serial.print(" | Button: ");
-  Serial.print(getSW());
-  Serial.print(" | Food: ");
-  Serial.print(FOOD[0]);
-  Serial.print(", ");
-  Serial.println(FOOD[1]);
+void gameStart() {
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(4);
+  tft.setCursor(95,90);
+  tft.print("Snake!");
+  tft.setCursor(95,122);
+  tft.setTextSize(2);
+  tft.print("by A1");
+  tft.setCursor(80,186);
+  tft.setTextSize(1);
+  tft.print("press the joystick to start");
+
+  while ( !GAME_START ) {
+    if ( getSW() == 0 ) {
+      tft.setTextColor(ILI9341_BLACK);
+      tft.setTextSize(4);
+      tft.setCursor(95,90);
+      tft.print("Snake!");
+      tft.setCursor(95,122);
+      tft.setTextSize(2);
+      tft.print("by A1");
+      tft.setCursor(80,186);
+      tft.setTextSize(1);
+      tft.print("press the joystick to start");
+
+      GAME_START = true;
+      TRAJECTORY = RIGHT;
+      setGameSpeed(NORMAL);
+      SNAKE[HEAD][X] = (width/bSize/2)*bSize;
+      SNAKE[HEAD][Y] = (height/bSize/2)*bSize;
+      tft.setCursor(SNAKE[HEAD][X], SNAKE[HEAD][Y]);
+      cookFood();
+      time = millis();
+    }
+  }
+}
+
+void gameOver() {
+  GAME_START = false;
+  tft.fillRect(FOOD[X], FOOD[Y], bSize, bSize, ILI9341_BLACK);
+
+  // draw game over
+  tft.setTextSize(4);
+  tft.setTextColor(0x6000);
+  tft.setCursor(52,93);
+  tft.print("GAME OVER");
+  tft.setTextColor(ILI9341_RED);
+  tft.setCursor(55,90);
+  tft.print("GAME OVER");
+  delay(3000);
+
+  // remove everythin on screen and reset values
+  tft.setTextColor(ILI9341_BLACK);
+  tft.setCursor(52,93);
+  tft.print("GAME OVER");
+  tft.setCursor(55,90);
+  tft.print("GAME OVER");
+  for ( int i = 0; i < HEAD + 1; i++) {
+    tft.fillRect(SNAKE[i][X], SNAKE[i][Y], bSize, bSize, ILI9341_BLACK);
+    SNAKE[i][X] = 0;
+    SNAKE[i][Y] = 0;
+  }
+  HEAD = 1;
+
+  gameStart();
 }
 
 void moveNext() {
-  updateBody();
+  if (elongate()) {
+    cookFood();
+  } else {
+    clearTail();
+    updateBody();
+  }
   setHead();
 
-  if ( getPosX() >= width || getPosX() <= 0 ) {
-    tft.setCursor(bSize*8,bSize*8);
-  } else if ( getPosY() >= height || getPosY() <= 0 ) {
-    tft.setCursor(bSize*8,bSize*8);
-  } else {
+  if (!didCollide()) {
     tft.fillRect(SNAKE[HEAD][X], SNAKE[HEAD][Y], bSize, bSize, ILI9341_GREEN);
-
+  } else {
+    gameOver();
   }
 }
 
 bool elongate() {
   if ( getPosX() == FOOD[0] && getPosY() == FOOD[1] ) {
     HEAD++;
-    // updateBody();
-    setHead();
-
+    SNAKE[HEAD][X] = getPosX();
+    SNAKE[HEAD][Y] = getPosY();
     return true;
   }
   return false;
@@ -148,23 +185,18 @@ void updateBody() {
 
 void setHead() {
   if (TRAJECTORY == UP) {
-    // SNAKE[HEAD][X] = getPosX();
     SNAKE[HEAD][Y] = getPosY() - bSize;
   } else if ( TRAJECTORY == DOWN ) {
-    // SNAKE[HEAD][X] = getPosX();
     SNAKE[HEAD][Y] = getPosY() + bSize;
   } else if ( TRAJECTORY == RIGHT ) {
     SNAKE[HEAD][X] = getPosX() + bSize;
-    // SNAKE[HEAD][Y] = getPosY();
   } else if ( TRAJECTORY == LEFT ) {
     SNAKE[HEAD][X] = getPosX() - bSize;
-    // SNAKE[HEAD][Y] = getPosY();
   }
   tft.setCursor(SNAKE[HEAD][X], SNAKE[HEAD][Y]);
 }
 
 void clearTail() {
-  // tft.fillRect(PREVIOUS[0], PREVIOUS[1], bSize, bSize, ILI9341_BLACK);
   tft.fillRect(SNAKE[0][0], SNAKE[0][1], bSize, bSize, ILI9341_BLACK);
 }
 
@@ -187,9 +219,32 @@ void setGameSpeed(int game_speed) {
 }
 
 void cookFood() {
-  FOOD[0] = random(0,width/bSize)*bSize;
-  FOOD[1] = random(0,height/bSize)*bSize;
-  tft.fillRect(FOOD[0], FOOD[1], bSize, bSize, ILI9341_WHITE);
+  bool willnotwork;
+
+  do {
+    FOOD[X] = random(0,width/bSize)*bSize;
+    FOOD[Y] = random(0,height/bSize)*bSize;
+    willnotwork = false;
+    for (int i = 0; i < HEAD + 1; i++) {
+      if (FOOD[X] == SNAKE[i][X] || FOOD[Y] == SNAKE[i][Y]) {
+        willnotwork = true;
+      }
+    }
+  }
+  while (willnotwork);
+  tft.fillRect(FOOD[X], FOOD[Y], bSize, bSize, ILI9341_WHITE);
+}
+
+bool didCollide() {
+  if ( ( SNAKE[HEAD][X] >= width || SNAKE[HEAD][X] <= 0 ) || ( SNAKE[HEAD][Y] >= height || SNAKE[HEAD][Y] <= 0 ) ) {
+    return true;
+  }
+  for (int i = 0; i < HEAD; i++) {
+    if ( SNAKE[HEAD][X] == SNAKE[i][X] && SNAKE[HEAD][Y] == SNAKE[i][Y] ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 int getPosX() {
