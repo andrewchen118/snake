@@ -1,6 +1,5 @@
 #include "Adafruit_GFX.h"     
 #include "Adafruit_ILI9341.h"
-// #include <string>
 
 // TFT PINS
 #define TFT_DC 9              
