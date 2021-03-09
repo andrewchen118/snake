@@ -103,8 +103,8 @@ void loop()
 */
 void gameStart() {
   // create data for the start screen text
-  int title_coords[][3] = {{95,90,4},{95,122,2}};
-  String title_text[] = {{"Snake!"},{"by A1"}};
+  int title_coords[][3] = {{95,90,4},{95,122,2},{95,138,1}};
+  String title_text[] = {{"Snake!"},{"by A1"},{"(p.s. Destin is awesome)"}};
   int start_coords[][3] = {{100,186,1},{100,194,1}};
   String start_text[] = {{"options"},{"start"}};
   int cursor_coords[][3] = {{90,186,1},{90,194,1},{90,202,1}};
@@ -113,7 +113,7 @@ void gameStart() {
   String options_text[] = {{"slow"},{"normal"},{"fast"}};
 
   // draw the start screen text
-  drawText(title_coords, title_text, ILI9341_WHITE, 2, ALL);
+  drawText(title_coords, title_text, ILI9341_WHITE, 3, ALL);
   drawText(start_coords, start_text, ILI9341_WHITE, 2, ALL);
   drawText(cursor_coords, cursor_text, ILI9341_WHITE, 2, 1);
 
@@ -133,7 +133,7 @@ void gameStart() {
 
     if ( getSW() == 0 ) {
       if (getPosY() == cursor_coords[1][Y]) {   // start game
-        drawText(title_coords, title_text, ILI9341_BLACK, 2, ALL);
+        drawText(title_coords, title_text, ILI9341_BLACK, 3, ALL);
         drawText(start_coords, start_text, ILI9341_BLACK, 2, ALL);
         drawText(cursor_coords, cursor_text, ILI9341_BLACK, 3, ALL);
 
