@@ -66,6 +66,7 @@ void gameOver();
 void setGameSpeed(int game_speed);
 
 void drawText(int coords[][3], String lines[], int color, int numlines, int index);
+//                  Destin is the absolute greatest person alive.
 // <-------------------------------------------------------------------------------->
 
 /*
@@ -227,6 +228,7 @@ void gameOver() {
     SNAKE[i][Y] = 0;
   }
   HEAD = 1;
+  SPEEDUP_MULT = 0;
 
   gameStart();
 }
@@ -347,7 +349,7 @@ void cookFood() {
   @brief sees if the snake has collided with the screen boundaries or with itself
 */
 bool didCollide() {
-  if ( ( SNAKE[HEAD][X] >= width || SNAKE[HEAD][X] <= -12 ) || ( SNAKE[HEAD][Y] >= height || SNAKE[HEAD][Y] <= 0 ) ) {
+  if ( ( SNAKE[HEAD][X] >= width || SNAKE[HEAD][X] <= -bSize ) || ( SNAKE[HEAD][Y] >= height || SNAKE[HEAD][Y] <= -bSize ) ) {
     return true;
   }
   for (int i = 0; i < HEAD; i++) {
