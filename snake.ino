@@ -1,18 +1,25 @@
-#include "Adafruit_GFX.h"     
+#include "Adafruit_GFX.h"
 #include "Adafruit_ILI9341.h"
 
 // TFT PINS
-#define TFT_DC 9              
+#define TFT_DC 9
 #define TFT_CS 10
 #define TFT_RST 8
-#define TFT_MISO 12
-#define TFT_MOSI 11
-#define TFT_CLK 13
+#define TFT_MISO 2
+#define TFT_MOSI 3
+#define TFT_CLK 4
 
 // JOYSTICK
-#define Jx A1
-#define Jy A3
-#define SW 4
+#define SW 5
+
+//ULTRASONIC
+const int trigger1 = 5;
+const int echo1 = 7;
+const int trigger2 = 11;
+const int echo2 = 12;
+long time_taken;
+float d1,d2,theta;
+int dist, distL, distR, Jx, Jy;
 
 // GAME CONSTANTS
 #define bSize 12
@@ -43,7 +50,9 @@ int FOOD[2];
 int SNAKE[100][3];
 int HEAD = 1;
 int TAIL = 0;
-
+byte STARTAUDIO = 97;
+byte EATAUDIO = 98;
+byte DEATHAUDIO = 99;
 // <----------------------------- HELPER FUNCTIONS --------------------------------->
 int getJx();
 int getJy();
@@ -72,11 +81,13 @@ void drawText(int coords[][3], String lines[], int color, int numlines, int inde
 /*
   initialize pins and tft stuff, -> initialize game
 */
-void setup(){
-  pinMode(Jx, INPUT);
-  pinMode(Jy, INPUT);
+void setup() {
   pinMode(SW, INPUT_PULLUP);
-
+  pinMode(trigger1, OUTPUT);
+  pinMode(echo1, INPUT);
+  pinMode(trigger2, OUTPUT);
+  pinMode(echo2, INPUT);
+  Serial.begin(9600);
   randomSeed(millis());
 
   tft.begin();
@@ -84,6 +95,7 @@ void setup(){
   tft.fillScreen(ILI9341_BLACK);
 
   gameStart();
+
 }
 
 /*
@@ -91,69 +103,82 @@ void setup(){
 */
 void loop()
 {
-  setTrajectory();
-  if ( millis() - time >= GAME_SPEED - (SPEEDUP_MULT*10) && GAME_START ) {
+  if ( millis() - time >= GAME_SPEED - (SPEEDUP_MULT * 10) && GAME_START ) {
     moveNext();
     time = millis();
   }
-}
 
+  Track();
+  Serial.print(Jx);
+  Serial.print("\t");
+  Serial.print(Jy);
+  }
+
+/*!
+   Calculating the distance from the hand and the ultrasonic sensor
+*/
+void Track()
+{
+   float dist=81; //distance between two sensors
+
+   //pins for sensor 1 need to be uploaded
+   digitalWrite(5, LOW);
+   delayMicroseconds(2);
+   digitalWrite(5, HIGH);
+   delayMicroseconds(10);
+   digitalWrite(5, LOW);
+   d1 = pulseIn(7, HIGH);
+   d1=d1*343/2000;
+
+  
+   delay(10);
+   //pins for sensor 2 need to be uploaded
+   digitalWrite(11, LOW);
+   delayMicroseconds(2);
+   digitalWrite(11, HIGH);
+   delayMicroseconds(10);
+   digitalWrite(11, LOW);
+   d2 = pulseIn(12, HIGH);
+   d2=d2*343/2000;
+  
+theta=acos((((d1*d1)+(dist*dist)-(d2*d2)))/(2*d1*dist));
+
+if(theta<3 && theta>0){               // to avoid impossible values
+  Jy=d1*cos(theta) + dist/2; // y coordinate 
+  Jx=d1*sin(theta); // X coordinate
+}
+else{Serial.println("bad track");}
+/*Serial.print(d1);
+Serial.print("\t");
+Serial.print(d2);
+Serial.print("\t");
+Serial.print(theta*180/3.14);           //for debugging
+Serial.print("\t");
+Serial.print(X);
+Serial.print("\t");
+Serial.print(Y);
+Serial.print("\n");*/
+delay(10);
+
+}
 /*!
   @brief initializes the game, provides option menu to change game speed
 */
 void gameStart() {
-  // create data for the start screen text
-  int title_coords[][3] = {{95,90,4},{95,122,2},{95,138,1}};
-  String title_text[] = {{"Snake!"},{"by A1"},{"(p.s. Destin is awesome)"}};
-  int start_coords[][3] = {{100,186,1},{100,194,1}};
-  String start_text[] = {{"options"},{"start"}};
-  int cursor_coords[][3] = {{90,186,1},{90,194,1},{90,202,1}};
-  String cursor_text[] = {{">"},{">"},{">"}};
-  int options_coords[][3] = {{100,186,1},{100,194,1},{100,202,1}};
-  String options_text[] = {{"slow"},{"normal"},{"fast"}};
-
-  // draw the start screen text
-  drawText(title_coords, title_text, ILI9341_WHITE, 3, ALL);
-  drawText(start_coords, start_text, ILI9341_WHITE, 2, ALL);
-  drawText(cursor_coords, cursor_text, ILI9341_WHITE, 2, 1);
-
   bool enter_menu = false;
 
   while ( !GAME_START ) {   // start game or go into option menu
-    while(!enter_menu && getSW() == 0);
+    while (!enter_menu && getSW() == 0);
     enter_menu = true;
-
-    if ( getJy() > 200 ) {
-      drawText(cursor_coords, cursor_text, ILI9341_BLACK, 2, 1);
-      drawText(cursor_coords, cursor_text, ILI9341_WHITE, 2, 0);
-    } else if ( getJy() < -200 ) {
-      drawText(cursor_coords, cursor_text, ILI9341_BLACK, 2, 0);
-      drawText(cursor_coords, cursor_text, ILI9341_WHITE, 2, 1);
-    }
-
-    if ( getSW() == 0 ) {
-      if (getPosY() == cursor_coords[1][Y]) {   // start game
-        drawText(title_coords, title_text, ILI9341_BLACK, 3, ALL);
-        drawText(start_coords, start_text, ILI9341_BLACK, 2, ALL);
-        drawText(cursor_coords, cursor_text, ILI9341_BLACK, 3, ALL);
-
+    
         GAME_START = true;
         TRAJECTORY = RIGHT;
-        SNAKE[HEAD][X] = (width/bSize/2)*bSize;
-        SNAKE[HEAD][Y] = (height/bSize/2)*bSize;
+        Serial.write(STARTAUDIO);
+        SNAKE[HEAD][X] = (width / bSize / 2) * bSizce;
+        SNAKE[HEAD][Y] = (height / bSize / 2) * bSize;
         tft.setCursor(SNAKE[HEAD][X], SNAKE[HEAD][Y]);
         cookFood();
         time = millis();
-      } else if (getPosY() == cursor_coords[0][Y]) {    // go to options
-        drawText(start_coords, start_text, ILI9341_BLACK, 2, ALL);
-        drawText(cursor_coords, cursor_text, ILI9341_BLACK, 2, ALL);
-        drawText(options_coords, options_text, ILI9341_WHITE, 3, ALL);
-
-        time = millis();
-        bool j_used = false;
-        bool can_return = false;
-        enter_menu = false;
-        int option;
 
         if (GAME_SPEED == SLOW) {
           option = 0;
@@ -169,21 +194,8 @@ void gameStart() {
 
           if ( getJy() < 50 && getJy() > -50 ) {
             j_used = false;
-          } else if ( getJy() > 200 && !j_used ) {
-            if (option > 0) {
-              drawText(cursor_coords, cursor_text, ILI9341_BLACK, 3, option);
-              option--;
-              j_used = true;
-            }
-          } else if ( getJy() < -200 && !j_used) {
-            if ( option < 2 ) {
-              drawText(cursor_coords, cursor_text, ILI9341_BLACK, 3, option);
-              option++;
-              j_used = true;
-            }
-          }
-          drawText(cursor_coords, cursor_text, ILI9341_WHITE, 3, option);
-
+          } 
+        }
           if ( getSW() == 0 ) {
             if (option == 0) {
               setGameSpeed(SLOW);
@@ -210,12 +222,13 @@ void gameStart() {
   @brief ends the game, resets game values
 */
 void gameOver() {
+  Serial.write(DEATHAUDIO);
   GAME_START = false;
   tft.fillRect(FOOD[X], FOOD[Y], bSize, bSize, ILI9341_BLACK);
 
   // draw game over
-  int game_over_coords[][3] = {{52,93,4},{55,90,4}};
-  String game_over_text[] = {{"GAME OVER"},{"GAME OVER"}};
+  int game_over_coords[][3] = {{52, 93, 4}, {55, 90, 4}};
+  String game_over_text[] = {{"GAME OVER"}, {"GAME OVER"}};
   drawText(game_over_coords, game_over_text, 0x6000, 2, 0);
   drawText(game_over_coords, game_over_text, ILI9341_RED, 2, 1);
   delay(3000);
@@ -271,9 +284,9 @@ bool elongate() {
 */
 void updateBody() {
   for (int i = 0; i < HEAD; i++) {
-    SNAKE[i][X] = SNAKE[i+1][X];
-    SNAKE[i][Y] = SNAKE[i+1][Y];
-    SNAKE[i][TRAJ] = SNAKE[i+1][TRAJ];
+    SNAKE[i][X] = SNAKE[i + 1][X];
+    SNAKE[i][Y] = SNAKE[i + 1][Y];
+    SNAKE[i][TRAJ] = SNAKE[i + 1][TRAJ];
   }
 }
 
@@ -332,8 +345,8 @@ void setGameSpeed(int game_speed) {
 void cookFood() {
   bool willnotwork;
   do {
-    FOOD[X] = random(0,width/bSize)*bSize;
-    FOOD[Y] = random(0,height/bSize)*bSize;
+    FOOD[X] = random(0, width / bSize) * bSize;
+    FOOD[Y] = random(0, height / bSize) * bSize;
     willnotwork = false;
     for (int i = 0; i < HEAD + 1; i++) {
       if (FOOD[X] == SNAKE[i][X] || FOOD[Y] == SNAKE[i][Y]) {
@@ -377,10 +390,10 @@ void drawText(int coords[][3], String lines[], int color, int numlines, int inde
       tft.print(lines[i]);
     }
   } else {
-      tft.setTextColor(color);
-      tft.setTextSize(coords[index][2]);
-      tft.setCursor(coords[index][X], coords[index][Y]);
-      tft.print(lines[index]);
+    tft.setTextColor(color);
+    tft.setTextSize(coords[index][2]);
+    tft.setCursor(coords[index][X], coords[index][Y]);
+    tft.print(lines[index]);
   }
 }
 
@@ -401,20 +414,42 @@ int getPosY() {
 /*!
   @brief gets the current x-value of the joystick
 */
-int getJx() { 
-  return map(analogRead(Jx), 0, 1023, -512, 512);
+int getJx() {
+  return map(Jx, 0, 1023, -512, 512);
 }
 
 /*!
   @brief gets the current y-value of the joystick
 */
 int getJy() {
-  return map(analogRead(Jy), 0, 1023, -512, 512);
+  return map(Jy, 0, 1023, -512, 512);
 }
 
 /*!
   @brief returns the state of the joystick click
 */
+
+void calculate_distance(int trigger, int echo){
+digitalWrite(trigger, LOW);
+delayMicroseconds(2);
+digitalWrite(trigger, HIGH);
+delayMicroseconds(10);
+digitalWrite(trigger, LOW);
+
+time_taken = pulseIn(echo, HIGH);
+dist= time_taken*0.034/2;
+if (dist>60)
+dist = 60;
+}
+
 int getSW() {
-  return digitalRead(SW);
+  calculate_distance(trigger1, echo1);
+  distL = dist;
+  calculate_distance(trigger2, echo2);
+  distR = dist;
+  if ((distL >40 && distR>40) && (distL <60 && distR<60)) //Detect both hands{
+  return 1;
+  else { 
+  return 0;
+ }
 }
