@@ -103,6 +103,7 @@ void setup() {
 */
 void loop()
 {
+  setTrajectory();
   if ( millis() - time >= GAME_SPEED - (SPEEDUP_MULT * 10) && GAME_START ) {
     moveNext();
     time = millis();
@@ -165,20 +166,59 @@ delay(10);
   @brief initializes the game, provides option menu to change game speed
 */
 void gameStart() {
+  // create data for the start screen text
+  int title_coords[][3] = {{95, 90, 4}, {95, 122, 2}, {95, 138, 1}};
+  String title_text[] = {{"Snake!"}, {"by A1"}, {"(p.s. Destin is awesome)"}};
+  int start_coords[][3] = {{100, 186, 1}, {100, 194, 1}};
+  String start_text[] = {{"options"}, {"start"}};
+  int cursor_coords[][3] = {{90, 186, 1}, {90, 194, 1}, {90, 202, 1}};
+  String cursor_text[] = {{">"}, {">"}, {">"}};
+  int options_coords[][3] = {{100, 186, 1}, {100, 194, 1}, {100, 202, 1}};
+  String options_text[] = {{"slow"}, {"normal"}, {"fast"}};
+
+  // draw the start screen text
+  drawText(title_coords, title_text, ILI9341_WHITE, 3, ALL);
+  drawText(start_coords, start_text, ILI9341_WHITE, 2, ALL);
+  drawText(cursor_coords, cursor_text, ILI9341_WHITE, 2, 1);
+
   bool enter_menu = false;
 
   while ( !GAME_START ) {   // start game or go into option menu
     while (!enter_menu && getSW() == 0);
     enter_menu = true;
+
+    if ( getJy() > 0 ) {
+      drawText(cursor_coords, cursor_text, ILI9341_BLACK, 2, 1);
+      drawText(cursor_coords, cursor_text, ILI9341_WHITE, 2, 0);
+    } else if ( getJy() < 0 ) {
+      drawText(cursor_coords, cursor_text, ILI9341_BLACK, 2, 0);
+      drawText(cursor_coords, cursor_text, ILI9341_WHITE, 2, 1);
+    }
+
+    if ( getSW() == 0 ) {
+      if (getPosY() == cursor_coords[1][Y]) {   // start game
+        drawText(title_coords, title_text, ILI9341_BLACK, 3, ALL);
+        drawText(start_coords, start_text, ILI9341_BLACK, 2, ALL);
+        drawText(cursor_coords, cursor_text, ILI9341_BLACK, 3, ALL);
     
         GAME_START = true;
         TRAJECTORY = RIGHT;
         Serial.write(STARTAUDIO);
-        SNAKE[HEAD][X] = (width / bSize / 2) * bSizce;
+        SNAKE[HEAD][X] = (width / bSize / 2) * bSize;
         SNAKE[HEAD][Y] = (height / bSize / 2) * bSize;
         tft.setCursor(SNAKE[HEAD][X], SNAKE[HEAD][Y]);
         cookFood();
         time = millis();
+      } else if (getPosY() == cursor_coords[0][Y]) {    // go to options
+        drawText(start_coords, start_text, ILI9341_BLACK, 2, ALL);
+        drawText(cursor_coords, cursor_text, ILI9341_BLACK, 2, ALL);
+        drawText(options_coords, options_text, ILI9341_WHITE, 3, ALL);
+
+        time = millis();
+        bool j_used = false;
+        bool can_return = false;
+        enter_menu = false;
+        int option;
 
         if (GAME_SPEED == SLOW) {
           option = 0;
@@ -194,8 +234,21 @@ void gameStart() {
 
           if ( getJy() < 50 && getJy() > -50 ) {
             j_used = false;
-          } 
-        }
+          } else if ( getJy() > 200 && !j_used ) {
+            if (option > 0) {
+              drawText(cursor_coords, cursor_text, ILI9341_BLACK, 3, option);
+              option--;
+              j_used = true;
+            }
+          } else if ( getJy() < 0 && !j_used) {
+            if ( option < 2 ) {
+              drawText(cursor_coords, cursor_text, ILI9341_BLACK, 3, option);
+              option++;
+              j_used = true;
+            }
+          }
+          drawText(cursor_coords, cursor_text, ILI9341_WHITE, 3, option);
+
           if ( getSW() == 0 ) {
             if (option == 0) {
               setGameSpeed(SLOW);
