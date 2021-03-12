@@ -12,20 +12,17 @@
 // JOYSTICK
 #define SW 5
 
-//ULTRASONIC
-const int trigger1 = 5;
-const int echo1 = 7;
-const int trigger2 = 11;
-const int echo2 = 12;
-long time_taken;
-float d1,d2,theta;
-int dist, distL, distR, Jx, Jy;
+// ULTRASONIC
+#define trigger1 5;
+#define echo1 7;
+#define trigger2 11;
+#define echo2 12;
 
-// GAME CONSTANTS
+// CONSTANTS
 #define bSize 12
-#define SLOW 500
+#define SLOW 450
 #define NORMAL 250
-#define FAST 100
+#define FAST 150
 #define UP 0
 #define DOWN 1
 #define LEFT 2
@@ -36,6 +33,13 @@ int dist, distL, distR, Jx, Jy;
 #define X 0
 #define Y 1
 #define ALL -1
+#define HEAD 1
+#define TAIL 0
+
+// AUDIO
+byte STARTAUDIO = 97;
+byte EATAUDIO = 98;
+byte DEATHAUDIO = 99;
 
 // TFT panel
 Adafruit_ILI9341 tft(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
@@ -47,36 +51,34 @@ int GAME_SPEED = NORMAL;
 int SPEEDUP_MULT = 0;
 int TRAJECTORY;
 int FOOD[2];
-int SNAKE[100][3];
-int HEAD = 1;
-int TAIL = 0;
-byte STARTAUDIO = 97;
-byte EATAUDIO = 98;
-byte DEATHAUDIO = 99;
+int SNAKE[100][3]; // not expecting them to eat more than 100 food before dying hehe
+int sensorX, sensorY;
+
 // <----------------------------- HELPER FUNCTIONS --------------------------------->
-int getJx();
-int getJy();
-int getSW();
-
-int getPosX();
-int getPosY();
-
 void moveNext();
-void cookFood();
-bool elongate();
-void setHead();
-void updateBody();
-void clearTail();
-void setTrajectory(char dir);
-bool didCollide();
-
 void startGame();
 void gameOver();
+
 void setGameSpeed(int game_speed);
+void setTrajectory(char dir);
+void setHead();
+void clearTail();
+void updateBody();
+void cookFood();
+bool elongate();
+bool didCollide();
+
+void track();
+int getX();
+int getY();
+bool didSelect();
+int calc_dist(int trigger, int echo);
+int getPosX();
+int getPoxY();
 
 void drawText(int coords[][3], String lines[], int color, int numlines, int index);
-//                  Destin is the absolute greatest person alive.
-// <-------------------------------------------------------------------------------->
+// <----------------Destin is the absolute greatest person alive.------------------->
+
 
 /*
   initialize pins and tft stuff, -> initialize game
@@ -95,7 +97,6 @@ void setup() {
   tft.fillScreen(ILI9341_BLACK);
 
   gameStart();
-
 }
 
 /*
@@ -103,65 +104,33 @@ void setup() {
 */
 void loop()
 {
+  track();
   setTrajectory();
-  if ( millis() - time >= GAME_SPEED - (SPEEDUP_MULT * 10) && GAME_START ) {
+  if ( millis() - time >= GAME_SPEED - (SPEEDUP_MULT * 5) && GAME_START ) {
     moveNext();
     time = millis();
   }
-
-  Track();
-  Serial.print(Jx);
-  Serial.print("\t");
-  Serial.print(Jy);
-  }
+}
 
 /*!
-   Calculating the distance from the hand and the ultrasonic sensor
+  @brief main game driver, determines the logic of the game (make snake longer, end game, etc...)
 */
-void Track()
-{
-   float dist=81; //distance between two sensors
+void moveNext() {
+  if (elongate()) {
+    cookFood();
+  } else {
+    clearTail();
+    updateBody();
+  }
+  setHead();
 
-   //pins for sensor 1 need to be uploaded
-   digitalWrite(5, LOW);
-   delayMicroseconds(2);
-   digitalWrite(5, HIGH);
-   delayMicroseconds(10);
-   digitalWrite(5, LOW);
-   d1 = pulseIn(7, HIGH);
-   d1=d1*343/2000;
-
-  
-   delay(10);
-   //pins for sensor 2 need to be uploaded
-   digitalWrite(11, LOW);
-   delayMicroseconds(2);
-   digitalWrite(11, HIGH);
-   delayMicroseconds(10);
-   digitalWrite(11, LOW);
-   d2 = pulseIn(12, HIGH);
-   d2=d2*343/2000;
-  
-theta=acos((((d1*d1)+(dist*dist)-(d2*d2)))/(2*d1*dist));
-
-if(theta<3 && theta>0){               // to avoid impossible values
-  Jy=d1*cos(theta) + dist/2; // y coordinate 
-  Jx=d1*sin(theta); // X coordinate
+  if (!didCollide()) {
+    tft.fillRect(SNAKE[HEAD][X], SNAKE[HEAD][Y], bSize, bSize, 2016);
+  } else {
+    gameOver();
+  }
 }
-else{Serial.println("bad track");}
-/*Serial.print(d1);
-Serial.print("\t");
-Serial.print(d2);
-Serial.print("\t");
-Serial.print(theta*180/3.14);           //for debugging
-Serial.print("\t");
-Serial.print(X);
-Serial.print("\t");
-Serial.print(Y);
-Serial.print("\n");*/
-delay(10);
 
-}
 /*!
   @brief initializes the game, provides option menu to change game speed
 */
@@ -184,18 +153,18 @@ void gameStart() {
   bool enter_menu = false;
 
   while ( !GAME_START ) {   // start game or go into option menu
-    while (!enter_menu && getSW() == 0);
+    while (!enter_menu && didSelect() );
     enter_menu = true;
 
-    if ( getJy() > 0 ) {
+    if ( getY() > 0 ) {
       drawText(cursor_coords, cursor_text, ILI9341_BLACK, 2, 1);
       drawText(cursor_coords, cursor_text, ILI9341_WHITE, 2, 0);
-    } else if ( getJy() < 0 ) {
+    } else if ( getY() < 0 ) {
       drawText(cursor_coords, cursor_text, ILI9341_BLACK, 2, 0);
       drawText(cursor_coords, cursor_text, ILI9341_WHITE, 2, 1);
     }
 
-    if ( getSW() == 0 ) {
+    if ( didSelect() ) {
       if (getPosY() == cursor_coords[1][Y]) {   // start game
         drawText(title_coords, title_text, ILI9341_BLACK, 3, ALL);
         drawText(start_coords, start_text, ILI9341_BLACK, 2, ALL);
@@ -229,18 +198,18 @@ void gameStart() {
         }
 
         while (!can_return) {
-          while (!enter_menu && getSW() == 0);
+          while (!enter_menu && didSelect());
           enter_menu = true;
 
-          if ( getJy() < 50 && getJy() > -50 ) {
+          if ( getY() < 50 && getY() > -50 ) {
             j_used = false;
-          } else if ( getJy() > 200 && !j_used ) {
+          } else if ( getY() > 200 && !j_used ) {
             if (option > 0) {
               drawText(cursor_coords, cursor_text, ILI9341_BLACK, 3, option);
               option--;
               j_used = true;
             }
-          } else if ( getJy() < 0 && !j_used) {
+          } else if ( getY() < 0 && !j_used) {
             if ( option < 2 ) {
               drawText(cursor_coords, cursor_text, ILI9341_BLACK, 3, option);
               option++;
@@ -249,7 +218,7 @@ void gameStart() {
           }
           drawText(cursor_coords, cursor_text, ILI9341_WHITE, 3, option);
 
-          if ( getSW() == 0 ) {
+          if ( didSelect() ) {
             if (option == 0) {
               setGameSpeed(SLOW);
             } else if ( option == 1 ) {
@@ -300,46 +269,27 @@ void gameOver() {
 }
 
 /*!
-  @brief main game driver, determines the logic of the game (make snake longer, end game, etc...)
+  @brief sets the game speed
+  @param game_speed desired speed (SLOW, NORMAL, FAST)
 */
-void moveNext() {
-  if (elongate()) {
-    cookFood();
-  } else {
-    clearTail();
-    updateBody();
-  }
-  setHead();
-
-  if (!didCollide()) {
-    tft.fillRect(SNAKE[HEAD][X], SNAKE[HEAD][Y], bSize, bSize, 2016);
-  } else {
-    gameOver();
-  }
+void setGameSpeed(int game_speed) {
+  GAME_SPEED = game_speed;
 }
 
 /*!
-  @brief makes the snake longer
+  @brief sets the trajectory of the snake depending on where the joystick is pointed
 */
-bool elongate() {
-  if ( getPosX() == FOOD[0] && getPosY() == FOOD[1] ) {
-    HEAD++;
-    SPEEDUP_MULT++;
-    SNAKE[HEAD][X] = getPosX();
-    SNAKE[HEAD][Y] = getPosY();
-    return true;
-  }
-  return false;
-}
-
-/*!
-  @brief updates the data of each "block" of the snake body (x-y coord, trajectory)
-*/
-void updateBody() {
-  for (int i = 0; i < HEAD; i++) {
-    SNAKE[i][X] = SNAKE[i + 1][X];
-    SNAKE[i][Y] = SNAKE[i + 1][Y];
-    SNAKE[i][TRAJ] = SNAKE[i + 1][TRAJ];
+void setTrajectory() {
+  int x = getX();
+  int y = getY();
+  if ( y > 200 && SNAKE[HEAD][TRAJ] != DOWN ) {
+    TRAJECTORY = UP;
+  } else if ( y < -200 && SNAKE[HEAD][TRAJ] != UP ) {
+    TRAJECTORY = DOWN;
+  } else if ( x > 200 && SNAKE[HEAD][TRAJ] != LEFT ) {
+    TRAJECTORY = RIGHT;
+  } else if ( x < -200 && SNAKE[HEAD][TRAJ] != RIGHT ) {
+    TRAJECTORY = LEFT;
   }
 }
 
@@ -364,32 +314,18 @@ void setHead() {
   @brief clears the tail when the snake moves
 */
 void clearTail() {
-  tft.fillRect(SNAKE[0][0], SNAKE[0][1], bSize, bSize, ILI9341_BLACK);
+  tft.fillRect(SNAKE[TAIL][X], SNAKE[TAIL][Y], bSize, bSize, ILI9341_BLACK);
 }
 
 /*!
-  @brief sets the trajectory of the snake depending on where the joystick is pointed
+  @brief updates the data of each "block" of the snake body (x-y coord, trajectory)
 */
-void setTrajectory() {
-  int x = getJx();
-  int y = getJy();
-  if ( y > 200 && SNAKE[HEAD][TRAJ] != DOWN ) {
-    TRAJECTORY = UP;
-  } else if ( y < -200 && SNAKE[HEAD][TRAJ] != UP ) {
-    TRAJECTORY = DOWN;
-  } else if ( x > 200 && SNAKE[HEAD][TRAJ] != LEFT ) {
-    TRAJECTORY = RIGHT;
-  } else if ( x < -200 && SNAKE[HEAD][TRAJ] != RIGHT ) {
-    TRAJECTORY = LEFT;
+void updateBody() {
+  for (int i = 0; i < HEAD; i++) {
+    SNAKE[i][X] = SNAKE[i + 1][X];
+    SNAKE[i][Y] = SNAKE[i + 1][Y];
+    SNAKE[i][TRAJ] = SNAKE[i + 1][TRAJ];
   }
-}
-
-/*!
-  @brief sets the game speed
-  @param game_speed desired speed (SLOW, NORMAL, FAST)
-*/
-void setGameSpeed(int game_speed) {
-  GAME_SPEED = game_speed;
 }
 
 /*!
@@ -412,6 +348,20 @@ void cookFood() {
 }
 
 /*!
+  @brief makes the snake longer
+*/
+bool elongate() {
+  if ( getPosX() == FOOD[0] && getPosY() == FOOD[1] ) {
+    HEAD++;
+    SPEEDUP_MULT++;
+    SNAKE[HEAD][X] = getPosX();
+    SNAKE[HEAD][Y] = getPosY();
+    return true;
+  }
+  return false;
+}
+
+/*!
   @brief sees if the snake has collided with the screen boundaries or with itself
 */
 bool didCollide() {
@@ -424,6 +374,101 @@ bool didCollide() {
     }
   }
   return false;
+}
+
+/*!
+  @brief tracks and updates the x and y values for the ultrasonic sensors
+*/
+void track() {
+  float dist=81, theta, d1, d2;   // dist -> distance between two sensors
+
+  // pins for sensor 1 need to be uploaded
+  digitalWrite(5, LOW);
+  delayMicroseconds(2);
+  digitalWrite(5, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(5, LOW);
+  d1 = pulseIn(7, HIGH)*343/2000;
+  delay(10);
+
+  // pins for sensor 2 need to be uploaded
+  digitalWrite(11, LOW);
+  delayMicroseconds(2);
+  digitalWrite(11, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(11, LOW);
+  d2 = pulseIn(12, HIGH)*343/2000;
+
+  theta=acos((((d1*d1)+(dist*dist)-(d2*d2)))/(2*d1*dist));
+
+  if( theta < 3 && theta > 0 ) {    // to avoid impossible values
+    sensorY=d1*cos(theta) + dist/2; // y coordinate 
+    sensorX=d1*sin(theta);          // X coordinate
+  } else {
+    Serial.println("bad track");
+  }
+  delay(10);
+}
+
+/*!
+  @brief returns the adjusted x-value of the sensor
+*/
+int getX() {
+  return map(sensorX, 0, 1023, -512, 512);
+}
+
+/*!
+  @brief returns the adjusted y-value of the sensor
+*/
+int getY() {
+  return map(sensorY, 0, 1023, -512, 512);
+}
+
+/*!
+  @brief returns if the user moves closer to the sensors (in order to select something)
+*/
+bool didSelect() {
+  int distL = calc_dist(trigger1, echo1);
+  int distR = calc_dist(trigger2, echo2);
+
+  if ((distL >40 && distR>40) && (distL <60 && distR<60)) {   // detect both hands
+    return true;
+  }
+  return false;
+}
+
+/*!
+  @brief calculates the distance from the object to the sensor
+  @param trigger sound emitter
+  @param echo sound listener
+*/
+int calc_dist(int trigger, int echo) {
+  digitalWrite(trigger, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigger, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigger, LOW);
+
+  long time_taken = pulseIn(echo, HIGH);
+  int dist = time_taken*0.034/2;
+  if (dist > 60) {
+    return 60;
+  }
+  return dist;
+}
+
+/*!
+  @brief gets the current screen cursor position on the x-axis
+*/
+int getPosX() {
+  return tft.getCursorX();
+}
+
+/*!
+  @brief gets the current screen cursor position on the y-axis
+*/
+int getPosY() {
+  return tft.getCursorY();
 }
 
 /*!
@@ -448,61 +493,4 @@ void drawText(int coords[][3], String lines[], int color, int numlines, int inde
     tft.setCursor(coords[index][X], coords[index][Y]);
     tft.print(lines[index]);
   }
-}
-
-/*!
-  @brief gets the current screen cursor position on the x-axis
-*/
-int getPosX() {
-  return tft.getCursorX();
-}
-
-/*!
-  @brief gets the current screen cursor position on the y-axis
-*/
-int getPosY() {
-  return tft.getCursorY();
-}
-
-/*!
-  @brief gets the current x-value of the joystick
-*/
-int getJx() {
-  return map(Jx, 0, 1023, -512, 512);
-}
-
-/*!
-  @brief gets the current y-value of the joystick
-*/
-int getJy() {
-  return map(Jy, 0, 1023, -512, 512);
-}
-
-/*!
-  @brief returns the state of the joystick click
-*/
-
-void calculate_distance(int trigger, int echo){
-digitalWrite(trigger, LOW);
-delayMicroseconds(2);
-digitalWrite(trigger, HIGH);
-delayMicroseconds(10);
-digitalWrite(trigger, LOW);
-
-time_taken = pulseIn(echo, HIGH);
-dist= time_taken*0.034/2;
-if (dist>60)
-dist = 60;
-}
-
-int getSW() {
-  calculate_distance(trigger1, echo1);
-  distL = dist;
-  calculate_distance(trigger2, echo2);
-  distR = dist;
-  if ((distL >40 && distR>40) && (distL <60 && distR<60)) //Detect both hands{
-  return 1;
-  else { 
-  return 0;
- }
 }
