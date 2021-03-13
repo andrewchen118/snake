@@ -125,7 +125,7 @@ void moveNext() {
   setHead();
 
   if (!didCollide()) {
-    tft.fillRect(SNAKE[HEAD][X], SNAKE[HEAD][Y], bSize, bSize, 2016);
+    tft.fillRect(SNAKE[HEAD][X], SNAKE[HEAD][Y], bSize, bSize, ILI9341_GREEN);
   } else {
     gameOver();
   }
